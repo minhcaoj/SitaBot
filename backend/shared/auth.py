@@ -209,10 +209,10 @@ def extract_user_from_event(event: Dict[str, Any]) -> Dict[str, Any]:
             "groups": [],
         }
 
-    # 1. Kiểm tra API Gateway Cognito Authorizer Claims
+    # 1. Kiểm tra API Gateway Cognito Authorizer Claims (hỗ trợ cả REST API và HTTP API)
     req_context = event.get("requestContext") or {}
     authorizer = req_context.get("authorizer") or {}
-    claims = authorizer.get("claims") or {}
+    claims = authorizer.get("jwt", {}).get("claims") or authorizer.get("claims") or {}
 
     if claims and isinstance(claims, dict):
         user_id = claims.get("sub") or claims.get("cognito:username")

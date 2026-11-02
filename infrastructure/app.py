@@ -7,8 +7,8 @@ from stacks.monitoring_stack import MonitoringStack
 
 app = cdk.App()
 
-AuthStack(app, "AuthStack")
-CoreApiStack(app, "CoreApiStack")
+auth_stack = AuthStack(app, "AuthStack")
+CoreApiStack(app, "CoreApiStack", user_pool=auth_stack.user_pool)
 AiStack(app, "AiStack")
 DataStack(app, "DataStack")
 MonitoringStack(app, "MonitoringStack")
