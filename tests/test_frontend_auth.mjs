@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { authorizeUrl, createBrowserAuth } from "../frontend/auth.js";
+import { webcrypto } from "node:crypto";
+import { authorizeUrl, createBrowserAuth, signUpUrl } from "../frontend/auth.js";
 
 const config = {
   domain: "example.auth.ap-southeast-1.amazoncognito.com",
@@ -17,14 +18,57 @@ test("Cognito authorization uses code flow, PKCE and the preview callback", () =
   assert.equal(url.searchParams.get("redirect_uri"), config.redirect_uri);
 });
 
+test("Cognito self-registration opens its hosted sign-up with the same PKCE safeguards", async () => {
+  const values = new Map();
+  const navigations = [];
+  const signUpButton = { hidden: true, addEventListener() {} };
+  const signInButton = { hidden: true, textContent: "", addEventListener() {} };
+  const win = {
+    document: { getElementById: id => ({ authButton: signInButton, authSignUpButton: signUpButton })[id] || null },
+    location: {
+      origin: "https://preview.cloudfront.net",
+      pathname: "/",
+      search: "",
+      hash: "",
+      assign(url) { navigations.push(url); }
+    },
+    sessionStorage: {
+      getItem: key => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+      removeItem: key => values.delete(key)
+    },
+    crypto: webcrypto,
+    dispatchEvent() {}
+  };
+  const fetchImpl = async () => ({ ok: true, json: async () => ({ auth: config }) });
+  const auth = createBrowserAuth({ win, fetchImpl });
+  assert.equal(await auth.getIdToken(), null);
+  assert.equal(signInButton.hidden, false);
+  assert.equal(signUpButton.hidden, false);
+
+  await auth.signUp();
+  const url = new URL(navigations[0]);
+  const flow = JSON.parse(values.get("satibot.auth.flow"));
+  assert.equal(url.pathname, "/signup");
+  assert.equal(url.searchParams.get("client_id"), config.client_id);
+  assert.equal(url.searchParams.get("redirect_uri"), config.redirect_uri);
+  assert.equal(url.searchParams.get("response_type"), "code");
+  assert.equal(url.searchParams.get("code_challenge_method"), "S256");
+  assert.equal(url.searchParams.get("state"), flow.state);
+  assert.ok(url.searchParams.get("code_challenge"));
+  assert.ok(flow.verifier);
+  assert.equal(new URL(signUpUrl(config, "state", "challenge")).pathname, "/signup");
+});
+
 test("Cognito callback verifies state, clears URL code and stores ID token for API calls", async () => {
   const values = new Map([["satibot.auth.flow", JSON.stringify({ state: "expected", verifier: "secret-verifier" })]]);
   const changes = [];
   const payload = Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url");
   const idToken = `header.${payload}.signature`;
   const button = { hidden: true, textContent: "", addEventListener() {} };
+  const signUpButton = { hidden: true, addEventListener() {} };
   const win = {
-    document: { getElementById: id => id === "authButton" ? button : null },
+    document: { getElementById: id => ({ authButton: button, authSignUpButton: signUpButton })[id] || null },
     location: {
       origin: "https://preview.cloudfront.net",
       pathname: "/",
@@ -50,5 +94,6 @@ test("Cognito callback verifies state, clears URL code and stores ID token for A
   assert.deepEqual(changes, ["/"]);
   assert.equal(new URLSearchParams(requests[1].options.body).get("code_verifier"), "secret-verifier");
   assert.equal(button.textContent, "Đăng xuất SatiBot");
+  assert.equal(signUpButton.hidden, true);
   assert.equal(values.has("satibot.auth.flow"), false);
 });

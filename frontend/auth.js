@@ -1,4 +1,4 @@
-/** Cognito sign-in for the isolated web preview (authorization code + PKCE). */
+/** Cognito sign-up and sign-in for the isolated web preview (authorization code + PKCE). */
 
 const TOKEN_KEY = "satibot.auth.tokens";
 const FLOW_KEY = "satibot.auth.flow";
@@ -39,10 +39,17 @@ export function authorizeUrl(config, state, challenge) {
   return url.toString();
 }
 
+export function signUpUrl(config, state, challenge) {
+  const url = new URL(authorizeUrl(config, state, challenge));
+  url.pathname = "/signup";
+  return url.toString();
+}
+
 export function createBrowserAuth({ win = window, fetchImpl = fetch } = {}) {
   let config = null;
   let initPromise;
   const button = win.document.getElementById("authButton");
+  const signUpButton = win.document.getElementById("authSignUpButton");
   const message = win.document.getElementById("authMessage");
 
   function report(text) {
@@ -63,9 +70,12 @@ export function createBrowserAuth({ win = window, fetchImpl = fetch } = {}) {
   }
 
   function refreshButton() {
-    if (!button) return;
-    button.hidden = !config;
-    button.textContent = getStoredToken() ? "Đăng xuất SatiBot" : "Đăng nhập SatiBot";
+    const signedIn = Boolean(getStoredToken());
+    if (button) {
+      button.hidden = !config;
+      button.textContent = signedIn ? "Đăng xuất SatiBot" : "Đăng nhập SatiBot";
+    }
+    if (signUpButton) signUpButton.hidden = !config || signedIn;
   }
 
   async function handleCallback() {
@@ -123,7 +133,7 @@ export function createBrowserAuth({ win = window, fetchImpl = fetch } = {}) {
     }
   }
 
-  async function signIn() {
+  async function beginAuthorization(makeUrl) {
     await initPromise;
     if (!config) throw new Error("Website chưa cấu hình Cognito.");
     const state = base64url(win.crypto.getRandomValues(new Uint8Array(24)));
@@ -131,8 +141,12 @@ export function createBrowserAuth({ win = window, fetchImpl = fetch } = {}) {
     const digest = await win.crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
     const challenge = base64url(new Uint8Array(digest));
     win.sessionStorage.setItem(FLOW_KEY, JSON.stringify({ state, verifier }));
-    win.location.assign(authorizeUrl(config, state, challenge));
+    win.location.assign(makeUrl(config, state, challenge));
   }
+
+  async function signIn() { return beginAuthorization(authorizeUrl); }
+
+  async function signUp() { return beginAuthorization(signUpUrl); }
 
   async function signOut() {
     await initPromise;
@@ -151,10 +165,14 @@ export function createBrowserAuth({ win = window, fetchImpl = fetch } = {}) {
     const action = getStoredToken() ? signOut : signIn;
     action().catch(error => report(error.message || "Đăng nhập thất bại."));
   });
+  if (signUpButton) signUpButton.addEventListener("click", () => {
+    signUp().catch(error => report(error.message || "Đăng ký thất bại."));
+  });
   initPromise = initialize();
   return {
     getIdToken: async () => { await initPromise; return getStoredToken(); },
     signIn,
+    signUp,
     signOut
   };
 }

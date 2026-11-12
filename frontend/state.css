@@ -130,6 +130,11 @@ textarea:disabled {
   display: none;
 }
 
+.auth-sign-up-button {
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #7dd3fc;
+}
+
 .auth-message {
   color: #fbbf24;
   font-size: 0.8rem;

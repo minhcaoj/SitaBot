@@ -1,4 +1,4 @@
-"""The preview login must use a public PKCE-capable browser client."""
+"""The preview sign-up and login share a public PKCE-capable browser client."""
 
 from aws_cdk import App, Environment
 from aws_cdk.assertions import Template
@@ -14,7 +14,8 @@ def test_preview_user_pool_and_browser_client():
     )
     template = Template.from_stack(stack)
     pool = next(iter(template.find_resources("AWS::Cognito::UserPool").values()))
-    assert pool["Properties"]["AdminCreateUserConfig"]["AllowAdminCreateUserOnly"] is True
+    assert pool["Properties"]["AdminCreateUserConfig"]["AllowAdminCreateUserOnly"] is False
+    assert pool["Properties"]["AutoVerifiedAttributes"] == ["email"]
     assert pool["DeletionPolicy"] == "Retain"
     client = next(iter(template.find_resources("AWS::Cognito::UserPoolClient").values()))["Properties"]
     assert client["GenerateSecret"] is False

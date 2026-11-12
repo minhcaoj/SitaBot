@@ -1,4 +1,4 @@
-"""Cognito sign-in for the isolated CloudFront preview."""
+"""Cognito sign-up and sign-in for the isolated CloudFront preview."""
 
 import re
 
@@ -21,7 +21,7 @@ class WebAuthStack(Stack):
         callback = web_origin + "/"
         pool = cognito.UserPool(
             self, "UserPool", user_pool_name="SatiBotPreviewUsers",
-            self_sign_up_enabled=False,
+            self_sign_up_enabled=True,
             sign_in_aliases=cognito.SignInAliases(email=True),
             auto_verify=cognito.AutoVerifiedAttrs(email=True),
             account_recovery=cognito.AccountRecovery.EMAIL_ONLY,
