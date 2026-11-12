@@ -21,7 +21,8 @@ _SECRET_CACHE = {}
 _SM_CONFIG = Config(connect_timeout=2, read_timeout=2, retries={"total_max_attempts": 2})
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 SUPPORTED_MODELS = ("gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash")
-REQUEST_TIMEOUT_SECONDS = 8
+REQUEST_TIMEOUT_SECONDS = 20
+TOTAL_REQUEST_BUDGET_SECONDS = 26
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -60,17 +61,23 @@ def complete(messages, tools=None, model=None):
                "max_tokens": 2048}
     if tools:
         payload.update(tools=tools, tool_choice="auto", parallel_tool_calls=False)
+    deadline = time.monotonic() + TOTAL_REQUEST_BUDGET_SECONDS
     for attempt in range(3):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise BackendError("GeminiUnavailable", "Gemini phản hồi quá chậm. Vui lòng thử lại.", 502)
         request = urllib.request.Request(ENDPOINT, data=json.dumps(payload).encode(),
                     headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"}, method="POST")
         try:
-            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as reply:
+            with urllib.request.urlopen(request, timeout=min(REQUEST_TIMEOUT_SECONDS, remaining)) as reply:
                 data = json.loads(reply.read(262145), parse_constant=reject_constant)
             message = data["choices"][0]["message"]
             if not isinstance(message, dict) or (message.get("content") is not None and not isinstance(message["content"], str)):
                 raise ValueError("Invalid message")
             return message
         except urllib.error.HTTPError as exc:
+            # Log only the status code, never the response body or request headers.
+            _LOGGER.warning("Gemini HTTP status %s (attempt %s/3)", exc.code, attempt + 1)
             if exc.code not in {429, 500, 502, 503, 504} or attempt == 2:
                 raise BackendError("GeminiUnavailable", "Gemini tạm thời không khả dụng.", 502) from None
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
@@ -80,4 +87,6 @@ def complete(messages, tools=None, model=None):
                 raise BackendError("GeminiUnavailable", "Kết nối Gemini bị gián đoạn.", 502) from None
         except (ValueError, KeyError, IndexError, TypeError):
             raise BackendError("InvalidGeminiResponse", "Gemini trả dữ liệu sai cấu trúc.", 502) from None
-        time.sleep(0.25 * (2 ** attempt))
+        if deadline - time.monotonic() <= 0:
+            raise BackendError("GeminiUnavailable", "Gemini phản hồi quá chậm. Vui lòng thử lại.", 502)
+        time.sleep(min(0.25 * (2 ** attempt), max(0, deadline - time.monotonic())))

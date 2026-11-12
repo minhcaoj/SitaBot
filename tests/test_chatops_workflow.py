@@ -94,6 +94,22 @@ def test_cloud_chat_validates_and_passes_selected_model(cloud, monkeypatch):
     assert model.call_count == 1
 
 
+@pytest.mark.parametrize("message", ["47 tools này gồm những tools gì?", "Bạn hãy liệt kê 47 công cụ"])
+def test_tool_catalog_uses_registry_without_gemini(cloud, monkeypatch, message):
+    model = Mock(side_effect=AssertionError("Catalog should not call Gemini"))
+    monkeypatch.setattr(chat.gemini, "complete", model)
+    result = chat.handle(request({"message": message}), None)
+
+    assert result["statusCode"] == 200
+    data = json.loads(result["body"])
+    assert data["status"] == "SUCCESS"
+    tools = registry()
+    assert f"{len(tools)} công cụ" in data["message"]
+    assert all(name in data["message"] for name in tools)
+    assert len(cloud.load_session("alice", data["session_id"])["history"]) == 2
+    model.assert_not_called()
+
+
 def test_unauthenticated_chat_does_not_call_model(monkeypatch):
     model = Mock()
     monkeypatch.setattr(chat.gemini, "complete", model)
@@ -312,9 +328,33 @@ def test_gemini_network_timeout_retries_without_logging_credentials(cloud, monke
 
     assert exc.value.code == "GeminiUnavailable"
     assert network.call_count == 3
-    assert all(call.kwargs["timeout"] == gemini.REQUEST_TIMEOUT_SECONDS for call in network.call_args_list)
+    assert gemini.REQUEST_TIMEOUT_SECONDS > 8
+    assert all(0 < call.kwargs["timeout"] <= gemini.REQUEST_TIMEOUT_SECONDS for call in network.call_args_list)
     assert "private-key" not in caplog.text
     assert "attempt 3/3 failed (TimeoutError)" in caplog.text
+
+
+def test_gemini_retries_respect_total_request_budget(cloud, monkeypatch):
+    monkeypatch.setattr(gemini, "get_api_key", lambda: "test-only")
+    clock = [0.0]
+    monkeypatch.setattr(gemini.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(gemini.time, "sleep", lambda seconds: None)
+    timeouts = []
+
+    def timeout_after_wait(request, *, timeout):
+        timeouts.append(timeout)
+        clock[0] += timeout
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(gemini.urllib.request, "urlopen", timeout_after_wait)
+    with pytest.raises(BackendError) as exc:
+        gemini.complete([{"role": "user", "content": "hi"}])
+
+    assert exc.value.code == "GeminiUnavailable"
+    assert len(timeouts) == 2
+    assert timeouts[0] == gemini.REQUEST_TIMEOUT_SECONDS
+    assert 0 < timeouts[1] < timeouts[0]
+    assert sum(timeouts) <= gemini.TOTAL_REQUEST_BUDGET_SECONDS
 
 
 def test_tool_adapter_preserves_s3_action_and_validates_arguments():
