@@ -16,6 +16,7 @@ from backend.shared import gemini
 from backend.shared.cloud_errors import BackendError, failure
 from backend.shared.http_api import body, response, user_id, reject_constant
 from backend.shared.runtime import (
+    sanitize_model_data,
     PLATFORM_FAULT_CODES,
     cached_boto_client,
     emit_platform_fault,
@@ -112,7 +113,7 @@ def handle(event, context):
                 observed = {}
             if observed.get("status") == "COMPLETED":
                 history.append({"role": "assistant", "content": "Kết quả AWS đã ghi nhận: " + json.dumps(
-                    {"tool_name": observed["tool_name"], "result": observed["result"]}, ensure_ascii=False)[:12000]})
+                    {"tool_name": observed["tool_name"], "result": sanitize_model_data(observed["result"])}, ensure_ascii=False)[:12000]})
         history.append({"role": "user", "content": message})
         catalog = _tool_catalog_reply(message)
         if catalog is not None:
