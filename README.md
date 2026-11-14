@@ -44,14 +44,14 @@ Tài khoản SatiBot và tài khoản AWS được quản lý tách biệt; Sati
 > [!IMPORTANT]
 > IAM Role trên tài khoản AWS của bạn bắt buộc phải có path **`/satibot/`** và tên **`SatiBotAccessRole`** (`arn:aws:iam::<AWS_ACCOUNT_ID>:role/satibot/SatiBotAccessRole`) thì SatiBot mới chấp nhận xác minh.
 
-1. **Lấy `ExternalId` và `Trust policy` trên SatiBot:**
+Bước 1. **Lấy `ExternalId` và `Trust policy` trên SatiBot:**
    Đăng nhập [satibot.id.vn](https://satibot.id.vn/), bấm **Kết nối tài khoản AWS** ở thanh menu trái → bấm **Lấy ExternalId** rồi bấm **Sao chép JSON** tại khung **Trust policy**.
 
-2. **Tạo IAM Role trên tài khoản AWS cần liên kết:**
+Bước 2. **Tạo IAM Role trên tài khoản AWS cần liên kết:**
    Tạo IAM Role với path **`/satibot/`** và tên **`SatiBotAccessRole`**, dán đoạn `Trust policy` vừa sao chép và gắn các quyền S3 / EC2 / Lambda / IAM bạn cho phép.
    *(Nếu tạo qua AWS CloudShell / AWS CLI với file `trust-policy.json`: `aws iam create-role --path /satibot/ --role-name SatiBotAccessRole --assume-role-policy-document file://trust-policy.json` và gắn policy quyền tương ứng.)*
 
-3. **Dán Role ARN và xác minh:**
+Bước 3. **Dán Role ARN và xác minh:**
    Sao chép ARN của Role vừa tạo, dán vào mục **3. Dán Role ARN vừa tạo** trên SatiBot rồi bấm **Kiểm tra và liên kết**. Khi thành công, trạng thái góc trên phải chuyển sang **AWS: Đã kết nối**.
 
 ---
